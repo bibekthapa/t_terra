@@ -1,0 +1,30 @@
+# Terraform state files
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform/
+
+# Crash logs
+crash.log
+
+# Local IDE / Editor configs
+.vscode/
+.idea/
+*.iml
+
+# Mac / Linux / Windows system files
+.DS_Store
+Thumbs.db
+*.swp
+
+# Optional: secrets
+secrets.auto.tfvars
+.env
+
+# Optional: build outputs (for Spring Boot if you have it in same repo)
+/target/
+/build/
+
+# Ignore Docker files if you don’t want to commit images
+*.tar
+*.log
