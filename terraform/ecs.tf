@@ -1,3 +1,31 @@
+
+resource "aws_lb" "consumer_alb" {
+  name               = "consumer-alb"
+  internal           = false
+  load_balancer_type = "application"
+  subnets            = data.aws_subnets.public.ids
+  security_groups    = [aws_security_group.consumer_alb_sg.id]
+}
+
+resource "aws_lb_target_group" "consumer_tg" {
+  port        = 8082
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = data.aws_vpc.default.id
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.consumer_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.consumer_tg.arn
+  }
+}
+
+
 resource "aws_security_group" "consumer_sg" {
   name        = "consumer-sg"
   description = "Allow outbound traffic to DB"
@@ -7,7 +35,7 @@ ingress {
   from_port   = 8082
   to_port     = 8082
   protocol    = "tcp"
-  cidr_blocks = ["0.0.0.0/0"]  # open to the world for testing
+  security_groups = [aws_security_group.consumer_alb_sg.id] # ALB SG
 }
 
   egress {
@@ -17,6 +45,26 @@ ingress {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+resource "aws_security_group" "consumer_alb_sg" {
+  name   = "consumer-alb-sg"
+  vpc_id = data.aws_vpc.default.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole"
@@ -64,6 +112,13 @@ resource "aws_ecs_task_definition" "consumer_task" {
       { name = "DB_USER", value = var.consumer_db_user },
       { name = "DB_PASSWORD", value = var.consumer_db_password }
     ]
+     portMappings = [
+        {
+          containerPort = 8082
+          hostPort      = 8082
+          protocol      = "tcp"
+        }
+      ]
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -86,7 +141,18 @@ resource "aws_ecs_service" "consumer_service" {
     security_groups = [aws_security_group.consumer_sg.id]
     assign_public_ip = true
   }
+
+   load_balancer {
+    target_group_arn = aws_lb_target_group.consumer_tg.arn
+    container_name   = "consumer"
+    container_port   = 8082
+  }
+
+  depends_on = [aws_lb_listener.http]
 }
+
+
+
 data "aws_vpc" "default" {
   default = true
 }
@@ -97,3 +163,18 @@ data "aws_subnets" "default" {
     values = [data.aws_vpc.default.id]
   }
 }
+
+
+data "aws_subnets" "public" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+
+  filter {
+    name   = "map-public-ip-on-launch"
+    values = ["true"]
+  }
+}
+
+
